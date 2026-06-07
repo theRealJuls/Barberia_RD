@@ -69,8 +69,8 @@ export default function App() {
     if (servicesResult.error || paymentsResult.error) {
       setMessage("No se pudieron cargar los datos desde Supabase.");
     } else {
-      setServices(servicesResult.data);
-      setPayments(paymentsResult.data);
+      setServices(servicesResult.data ?? []);
+      setPayments(paymentsResult.data ?? []);
     }
 
     setLoading(false);
@@ -403,7 +403,7 @@ function ServicesTable({ services, onEdit, onDelete }) {
         <tbody>
           {services.length === 0 ? (
             <tr>
-              <td className="empty" colSpan="7">
+              <td className="empty" colSpan="5">
                 No hay servicios registrados.
               </td>
             </tr>
@@ -459,7 +459,7 @@ function PaymentsTable({ payments }) {
         <tbody>
           {payments.length === 0 ? (
             <tr>
-              <td className="empty" colSpan="5">
+              <td className="empty" colSpan="7">
                 No hay pagos en efectivo registrados.
               </td>
             </tr>
