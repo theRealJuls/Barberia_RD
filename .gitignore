@@ -1,1 +1,15 @@
 .DS_Store
+
+# Dependencias y builds
+node_modules
+**/node_modules
+dist
+**/dist
+
+# Variables de entorno (NUNCA subir secretos como SUPABASE_SERVICE_ROLE_KEY)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example

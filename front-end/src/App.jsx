@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "./lib/supabase";
+import { apiRequest } from "./lib/api";
 
 const money = new Intl.NumberFormat("es-DO", {
   style: "currency",
   currency: "DOP",
 });
+
+function mapServiceFromApi(s) {
+  return {
+    id: s.id,
+    nombre: s.name,
+    descripcion: s.description ?? "",
+    precio: s.base_price,
+    duracion_minutos: s.base_duration_minutes,
+    activo: s.is_active,
+  };
+}
 
 const emptyService = {
   id: "",
@@ -58,22 +69,18 @@ export default function App() {
     setLoading(true);
     setMessage("");
 
-    const [servicesResult, paymentsResult] = await Promise.all([
-      supabase.from("servicios").select("*").order("nombre", { ascending: true }),
-      supabase
-        .from("pagos_efectivo")
-        .select("*, servicios(nombre)")
-        .order("fecha_pago", { ascending: false }),
-    ]);
-
-    if (servicesResult.error || paymentsResult.error) {
-      setMessage("No se pudieron cargar los datos desde Supabase.");
-    } else {
-      setServices(servicesResult.data ?? []);
-      setPayments(paymentsResult.data ?? []);
+    try {
+      const [servicesData, paymentsData] = await Promise.all([
+        apiRequest("/api/services"),
+        apiRequest("/api/payments"),
+      ]);
+      setServices((servicesData ?? []).map(mapServiceFromApi));
+      setPayments(paymentsData ?? []);
+    } catch (error) {
+      setMessage(error.message || "No se pudieron cargar los datos del servidor.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   function updateServiceField(field, value) {
@@ -88,31 +95,33 @@ export default function App() {
     event.preventDefault();
     setMessage("");
 
-    const servicePayload = {
-      nombre: serviceForm.nombre.trim(),
-      descripcion: serviceForm.descripcion.trim(),
-      precio: Number(serviceForm.precio),
-      duracion_minutos: Number(serviceForm.duracion_minutos),
-      activo: serviceForm.activo,
+    const nombre = serviceForm.nombre.trim();
+    const precio = Number(serviceForm.precio);
+    const duracion = Number(serviceForm.duracion_minutos);
+
+    if (!nombre || precio <= 0 || duracion <= 0) {
+      return;
+    }
+
+    const payload = {
+      name: nombre,
+      description: serviceForm.descripcion.trim(),
+      base_price: precio,
+      base_duration_minutes: duracion,
+      is_active: serviceForm.activo,
     };
 
-    if (!servicePayload.nombre || servicePayload.precio <= 0 || servicePayload.duracion_minutos <= 0) {
-      return;
+    try {
+      if (serviceForm.id) {
+        await apiRequest("/api/services/" + serviceForm.id, { method: "PATCH", body: payload });
+      } else {
+        await apiRequest("/api/services", { method: "POST", body: payload });
+      }
+      setServiceForm(emptyService);
+      await loadDashboardData();
+    } catch (error) {
+      setMessage(error.message || "No se pudo guardar el servicio.");
     }
-
-    const request = serviceForm.id
-      ? supabase.from("servicios").update(servicePayload).eq("id", serviceForm.id)
-      : supabase.from("servicios").insert(servicePayload);
-
-    const { error } = await request;
-
-    if (error) {
-      setMessage("No se pudo guardar el servicio.");
-      return;
-    }
-
-    setServiceForm(emptyService);
-    await loadDashboardData();
   }
 
   function handleEditService(service) {
@@ -129,54 +138,17 @@ export default function App() {
 
   async function handleDeleteService(serviceId) {
     setMessage("");
-
-    const hasPayments = payments.some((payment) => payment.servicio_id === serviceId);
-    if (hasPayments) {
-      setMessage("No se puede eliminar un servicio con pagos registrados. Marcalo como inactivo.");
-      return;
+    try {
+      await apiRequest("/api/services/" + serviceId, { method: "DELETE" });
+      await loadDashboardData();
+    } catch (error) {
+      setMessage(error.message || "No se pudo eliminar el servicio.");
     }
-
-    const { error } = await supabase.from("servicios").delete().eq("id", serviceId);
-
-    if (error) {
-      setMessage("No se pudo eliminar el servicio.");
-      return;
-    }
-
-    await loadDashboardData();
   }
 
   async function handlePaymentSubmit(event) {
     event.preventDefault();
-    setMessage("");
-
-    if (!selectedPaymentService) return;
-
-    const paymentPayload = {
-      servicio_id: selectedPaymentService.id,
-      cliente_nombre: paymentForm.cliente_nombre.trim(),
-      monto: Number(paymentForm.monto),
-      recibido_por: paymentForm.recibido_por.trim(),
-      referencia: `EFE-${Date.now().toString().slice(-8)}`,
-      comprobante: `COMP-${Date.now().toString().slice(-8)}`,
-      metodo_pago: "efectivo",
-      estado_pago: "pagado",
-      notas: paymentForm.notas.trim(),
-    };
-
-    if (!paymentPayload.cliente_nombre || !paymentPayload.recibido_por || paymentPayload.monto <= 0) {
-      return;
-    }
-
-    const { error } = await supabase.from("pagos_efectivo").insert(paymentPayload);
-
-    if (error) {
-      setMessage("No se pudo registrar el pago en efectivo.");
-      return;
-    }
-
-    setPaymentForm(emptyPayment);
-    await loadDashboardData();
+    setMessage("El registro de pagos estará disponible cuando exista el módulo de citas.");
   }
 
   function handlePaymentServiceChange(serviceId) {
@@ -191,24 +163,43 @@ export default function App() {
   return (
     <>
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Barberia RD</p>
-          <h1>Servicios y pagos</h1>
+        <div className="brand">
+          <span className="brand-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg>
+          </span>
+          <span className="brand-name">Trimio</span>
         </div>
         <nav aria-label="Secciones administrativas">
-          <a href="#dashboard">Dashboard</a>
-          <a href="#servicios">Servicios</a>
-          <a href="#pagos">Pagos en efectivo</a>
+          <a className="nav-link active" href="#dashboard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            <span>Dashboard</span>
+          </a>
+          <a className="nav-link" href="#servicios">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg>
+            <span>Servicios</span>
+          </a>
+          <a className="nav-link" href="#pagos">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            <span>Pagos en efectivo</span>
+          </a>
         </nav>
       </aside>
 
       <main>
-        {message && <p className="notice">{message}</p>}
-        {loading && <p className="notice">Cargando datos desde Supabase...</p>}
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Panel</p>
+            <h1>Servicios y pagos</h1>
+          </div>
+          <span className="topbar-tag">Administrador</span>
+        </header>
+        <div className="content">
+          {message && <p className="notice">{message}</p>}
+          {loading && <p className="notice">Cargando datos...</p>}
 
-        <Dashboard metrics={metrics} />
+          <Dashboard metrics={metrics} />
 
-        <section id="servicios" className="section-band">
+          <section id="servicios" className="section-band">
           <div className="section-heading">
             <p className="eyebrow">CRUD</p>
             <h2>Servicios y precios</h2>
@@ -288,6 +279,7 @@ export default function App() {
           <div className="section-heading">
             <p className="eyebrow">Caja</p>
             <h2>Registro de pagos en efectivo</h2>
+            <p className="eyebrow" style={{ color: "#a3a3a3" }}>Próximamente — requiere el módulo de citas</p>
           </div>
 
           <form className="admin-form" onSubmit={handlePaymentSubmit}>
@@ -350,12 +342,13 @@ export default function App() {
               />
             </label>
             <div className="actions">
-              <button type="submit">Registrar pago</button>
+              <button type="submit" disabled>Registrar pago</button>
             </div>
           </form>
 
           <PaymentsTable payments={payments} />
         </section>
+        </div>
       </main>
     </>
   );
@@ -369,18 +362,35 @@ function Dashboard({ metrics }) {
         <h2>Resumen operativo</h2>
       </div>
       <div className="metrics" aria-label="Metricas administrativas">
-        <Metric label="Servicios activos" value={metrics.activeServices} />
-        <Metric label="Pagos registrados" value={metrics.payments} />
-        <Metric label="Ingresos en efectivo" value={money.format(metrics.income)} />
-        <Metric label="Ticket promedio" value={money.format(metrics.average)} />
+        <Metric
+          label="Servicios activos"
+          value={metrics.activeServices}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></svg>}
+        />
+        <Metric
+          label="Pagos registrados"
+          value={metrics.payments}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>}
+        />
+        <Metric
+          label="Ingresos en efectivo"
+          value={money.format(metrics.income)}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>}
+        />
+        <Metric
+          label="Ticket promedio"
+          value={money.format(metrics.average)}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>}
+        />
       </div>
     </section>
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, icon }) {
   return (
     <article>
+      <div className="metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
