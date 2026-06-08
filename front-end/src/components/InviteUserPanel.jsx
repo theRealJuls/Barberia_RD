@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiRequest } from '@/lib/api'
 import Button from '@/components/Button'
 
@@ -11,6 +11,10 @@ export default function InviteUserPanel({ token, defaultBarbershopId }) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  useEffect(() => {
+    setBarbershopId(defaultBarbershopId)
+  }, [defaultBarbershopId])
+
   const handleInvite = async (event) => {
     event.preventDefault()
     setSubmitting(true)
@@ -18,7 +22,7 @@ export default function InviteUserPanel({ token, defaultBarbershopId }) {
     setError('')
 
     try {
-      await apiRequest('/api/admin/invite-user', {
+      const response = await apiRequest('/api/admin/invite-user', {
         method: 'POST',
         token,
         body: {
@@ -29,7 +33,11 @@ export default function InviteUserPanel({ token, defaultBarbershopId }) {
         },
       })
 
-      setStatus('Invitacion creada correctamente.')
+      setStatus(
+        response.existingUser
+          ? 'El usuario ya existia. Se asigno el rol y la barberia correctamente.'
+          : 'Invitacion enviada correctamente.'
+      )
       setEmail('')
       setFullName('')
     } catch (inviteError) {

@@ -17,7 +17,7 @@ export default function AuthCallbackPage() {
         const panelPath = returnTo && returnTo !== '/login' ? returnTo : authData?.access?.panelPath || '/cliente'
 
         if (mounted) {
-          if (authData?.profile && (!authData.profile.full_name || !authData.profile.phone)) {
+          if (authData?.access?.role === 'client' && authData?.profile && (!authData.profile.full_name || !authData.profile.phone)) {
             navigate('/completar-perfil', { replace: true, state: { from: panelPath } })
             return
           }
