@@ -50,7 +50,7 @@ export default function LoginPage() {
         return
       }
 
-      if (authData?.profile && (!authData.profile.full_name || !authData.profile.phone)) {
+      if (authData?.access?.role === 'client' && authData?.profile && (!authData.profile.full_name || !authData.profile.phone)) {
         navigate('/completar-perfil', { replace: true, state: { from: redirectTo || authData?.access?.panelPath || '/cliente' } })
         return
       }
