@@ -13,6 +13,7 @@ import InviteUserPanel from '@/components/InviteUserPanel'
 import Shell from '@/components/Shell'
 import StatCard from '@/components/StatCard'
 import { appointments } from '@/data/mockData'
+import AdminContent from '@/pages/admin/AdminContent'
 import ClientPanel from '@/pages/client/ClientPanel'
 import SuperAdminContent from '@/pages/super-admin/SuperAdminContent'
 
@@ -63,6 +64,14 @@ export default function Dashboard({ role }) {
     return (
       <Shell title={titles['super-admin']} nav={navByRole['super-admin']}>
         <SuperAdminContent path={location.pathname} token={session?.access_token} />
+      </Shell>
+    )
+  }
+
+  if (role === 'admin') {
+    return (
+      <Shell title={titles.admin} nav={navByRole.admin}>
+        <AdminContent path={location.pathname} token={session?.access_token} barbershopId={access?.barbershopId} />
       </Shell>
     )
   }

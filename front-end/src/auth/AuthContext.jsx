@@ -230,7 +230,11 @@ export function AuthProvider({ children }) {
       role: authData?.access?.role || null,
       loading,
       error,
-      needsProfileCompletion: Boolean(authData?.profile && (!authData.profile.full_name || !authData.profile.phone)),
+      needsProfileCompletion: Boolean(
+        authData?.access?.role === 'client' &&
+        authData?.profile &&
+        (!authData.profile.full_name || !authData.profile.phone)
+      ),
       refreshAuth,
       signInWithGoogle,
       signInWithEmail,
