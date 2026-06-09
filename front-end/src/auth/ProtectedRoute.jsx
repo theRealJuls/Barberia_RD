@@ -2,10 +2,10 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 
 export function ProtectedRoute({ allowedRoles, children }) {
-  const { loading, session, role } = useAuth()
+  const { access, loading, session, role } = useAuth()
   const location = useLocation()
 
-  if (loading) {
+  if (loading || (session && !role)) {
     return (
       <div className="grid min-h-screen place-items-center bg-neutral-50 text-neutral-600">
         Cargando sesion...
@@ -18,7 +18,7 @@ export function ProtectedRoute({ allowedRoles, children }) {
   }
 
   if (allowedRoles?.length && !allowedRoles.includes(role)) {
-    return <Navigate to="/no-autorizado" replace />
+    return <Navigate to={access?.panelPath || '/no-autorizado'} replace />
   }
 
   return children

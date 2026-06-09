@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Scissors } from 'lucide-react'
+import { Menu, Scissors, X } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import Button from '@/components/Button'
 
@@ -7,6 +8,7 @@ export default function Shell({ title, nav, children }) {
   const { profile, role, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const handleSignOut = async () => {
     await signOut()
@@ -15,7 +17,7 @@ export default function Shell({ title, nav, children }) {
 
   return (
     <div className="min-h-screen bg-neutral-50">
-      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col border-r border-neutral-200 bg-white">
+      <aside className="hidden border-r border-neutral-200 bg-white md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col">
         <div className="flex h-16 items-center gap-2 px-5 border-b border-neutral-200">
           <div className="grid h-9 w-9 place-items-center rounded-md bg-neutral-900 text-white">
             <Scissors size={18} />
@@ -30,16 +32,16 @@ export default function Shell({ title, nav, children }) {
               (!isSectionRoot && location.pathname.startsWith(`${item.href}/`))
 
             return (
-            <Link
-              key={item.href}
-              to={item.href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${
-                isActive ? 'bg-neutral-100 font-medium text-neutral-950' : 'text-neutral-700 hover:bg-neutral-100'
-              }`}
-            >
-              <item.icon size={18} />
-              {item.label}
-            </Link>
+              <Link
+                key={item.href}
+                to={item.href}
+                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${
+                  isActive ? 'bg-neutral-100 font-medium text-neutral-950' : 'text-neutral-700 hover:bg-neutral-100'
+                }`}
+              >
+                <item.icon size={18} />
+                {item.label}
+              </Link>
             )
           })}
         </nav>
@@ -58,11 +60,43 @@ export default function Shell({ title, nav, children }) {
             <Button variant="outline" onClick={handleSignOut}>
               Salir
             </Button>
-            <Button variant="outline" className="md:hidden">
-              <Menu size={16} />
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-10 px-0 md:hidden"
+              onClick={() => setMobileNavOpen((current) => !current)}
+              aria-label={mobileNavOpen ? 'Cerrar menu' : 'Abrir menu'}
+            >
+              {mobileNavOpen ? <X size={16} /> : <Menu size={16} />}
             </Button>
           </div>
         </header>
+        {mobileNavOpen && (
+          <nav className="border-b border-neutral-200 bg-white p-3 md:hidden">
+            <div className="grid gap-1">
+              {nav.map((item) => {
+                const isSectionRoot = item.href.split('/').length <= 2
+                const isActive =
+                  location.pathname === item.href ||
+                  (!isSectionRoot && location.pathname.startsWith(`${item.href}/`))
+
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm ${
+                      isActive ? 'bg-neutral-100 font-medium text-neutral-950' : 'text-neutral-700'
+                    }`}
+                  >
+                    <item.icon size={18} />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
+          </nav>
+        )}
         <div className="p-4 md:p-8">{children}</div>
       </main>
     </div>

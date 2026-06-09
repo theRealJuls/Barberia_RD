@@ -30,6 +30,14 @@ export default function LoginPage() {
       return 'Correo o contrasena incorrectos.'
     }
 
+    if (message.toLowerCase().includes('email not confirmed') || message.toLowerCase().includes('confirmada por correo')) {
+      return 'Revisa tu correo y confirma la cuenta antes de iniciar sesion.'
+    }
+
+    if (message.toLowerCase().includes('session') || message.toLowerCase().includes('sesion')) {
+      return 'No se pudo validar la sesion. Cierra sesion, confirma tu correo e intenta de nuevo.'
+    }
+
     return message || 'No se pudo completar la accion.'
   }
 

@@ -255,7 +255,8 @@ async function requireAuth(req, res, next) {
     const { data, error } = await supabaseAdmin.auth.getUser(token)
 
     if (error || !data?.user) {
-      return res.status(401).json({ error: 'Sesion invalida.' })
+      console.warn('Invalid auth session:', error?.message || 'No user returned')
+      return res.status(401).json({ error: error?.message || 'Sesion invalida.' })
     }
 
     req.auth = await buildAuthContext(data.user)
@@ -341,6 +342,39 @@ function buildBarbershopPayload(body, userId, includeCreateFields = false) {
   }
 
   return payload
+}
+
+function buildServicePayload(body, barbershopId) {
+  const name = String(body.name || '').trim()
+
+  if (!name) {
+    throw new Error('Nombre del servicio es requerido.')
+  }
+
+  return {
+    barbershop_id: barbershopId,
+    name,
+    description: String(body.description || '').trim() || null,
+    base_price: Number(body.base_price || 0),
+    base_duration_minutes: Number(body.base_duration_minutes || 0),
+    is_active: body.is_active === undefined ? true : Boolean(body.is_active),
+  }
+}
+
+function buildBarberServicePayload(body, barbershopId, barberProfileId, serviceId) {
+  return {
+    barbershop_id: barbershopId,
+    barber_profile_id: barberProfileId,
+    service_id: serviceId,
+    custom_price: body.custom_price === '' || body.custom_price === undefined || body.custom_price === null
+      ? null
+      : Number(body.custom_price),
+    custom_duration_minutes:
+      body.custom_duration_minutes === '' || body.custom_duration_minutes === undefined || body.custom_duration_minutes === null
+        ? null
+        : Number(body.custom_duration_minutes),
+    is_active: body.is_active === undefined ? true : Boolean(body.is_active),
+  }
 }
 
 async function upsertProfileForUser(user, fallbackRole = 'client') {
@@ -710,9 +744,269 @@ app.patch('/api/admin/barbershops/:id', requireAuth, async (req, res) => {
   }
 })
 
+app.get('/api/admin/barbershops/:id/staff', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver empleados de esta barberia.' })
+    }
+
+    const { data: memberships, error: staffError } = await supabaseAdmin
+      .from('barbershop_staff')
+      .select('*')
+      .eq('barbershop_id', req.params.id)
+      .eq('is_active', true)
+
+    if (staffError) {
+      throw staffError
+    }
+
+    const profileIds = (memberships || []).map((membership) => membership.profile_id).filter(Boolean)
+    let profiles = []
+
+    if (profileIds.length) {
+      const { data: profileRows, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .in('id', profileIds)
+
+      if (profilesError) {
+        throw profilesError
+      }
+
+      profiles = profileRows || []
+    }
+
+    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]))
+    const staff = (memberships || []).map((membership) => ({
+      ...membership,
+      profile: profilesById.get(membership.profile_id) || null,
+    }))
+
+    res.json({ staff })
+  } catch (error) {
+    console.error('list staff error:', error)
+    res.status(500).json({ error: 'No se pudieron cargar los empleados.' })
+  }
+})
+
+app.get('/api/admin/barbershops/:id/services', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver servicios de esta barberia.' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('services')
+      .select('*')
+      .eq('barbershop_id', req.params.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw error
+    }
+
+    res.json({ services: data || [] })
+  } catch (error) {
+    console.error('list services error:', error)
+    res.status(500).json({ error: 'No se pudieron cargar los servicios.' })
+  }
+})
+
+app.post('/api/admin/barbershops/:id/services', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para crear servicios en esta barberia.' })
+    }
+
+    const payload = buildServicePayload(req.body, req.params.id)
+    const { data, error } = await supabaseAdmin
+      .from('services')
+      .insert(payload)
+      .select('*')
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    res.status(201).json({ service: data })
+  } catch (error) {
+    console.error('create service error:', error)
+    const status = error.message === 'Nombre del servicio es requerido.' ? 400 : 500
+    res.status(status).json({ error: status === 400 ? error.message : 'No se pudo crear el servicio.' })
+  }
+})
+
+app.patch('/api/admin/barbershops/:id/services/:serviceId', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para editar servicios en esta barberia.' })
+    }
+
+    const payload = buildServicePayload(req.body, req.params.id)
+    const { data, error } = await supabaseAdmin
+      .from('services')
+      .update(payload)
+      .eq('id', req.params.serviceId)
+      .eq('barbershop_id', req.params.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    res.json({ service: data })
+  } catch (error) {
+    console.error('update service error:', error)
+    const status = error.message === 'Nombre del servicio es requerido.' ? 400 : 500
+    res.status(status).json({ error: status === 400 ? error.message : 'No se pudo actualizar el servicio.' })
+  }
+})
+
+app.get('/api/admin/barbershops/:id/barbers/:barberProfileId/services', requireAuth, async (req, res) => {
+  try {
+    const { id, barberProfileId } = req.params
+
+    if (!canManageBarbershop(req.auth, id)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver servicios de este barbero.' })
+    }
+
+    const { data: membership, error: membershipError } = await supabaseAdmin
+      .from('barbershop_staff')
+      .select('*')
+      .eq('barbershop_id', id)
+      .eq('profile_id', barberProfileId)
+      .eq('role', 'barber')
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (membershipError) {
+      throw membershipError
+    }
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Este usuario no es barbero activo de esta barberia.' })
+    }
+
+    const { data: services, error: servicesError } = await supabaseAdmin
+      .from('services')
+      .select('*')
+      .eq('barbershop_id', id)
+      .order('created_at', { ascending: false })
+
+    if (servicesError) {
+      throw servicesError
+    }
+
+    const { data: assignments, error: assignmentsError } = await supabaseAdmin
+      .from('barber_services')
+      .select('*')
+      .eq('barbershop_id', id)
+      .eq('barber_profile_id', barberProfileId)
+
+    if (assignmentsError) {
+      throw assignmentsError
+    }
+
+    const assignmentsByService = new Map((assignments || []).map((assignment) => [assignment.service_id, assignment]))
+    const serviceAssignments = (services || []).map((service) => ({
+      service,
+      assignment: assignmentsByService.get(service.id) || null,
+    }))
+
+    res.json({ serviceAssignments })
+  } catch (error) {
+    console.error('list barber service assignments error:', error)
+    res.status(500).json({ error: 'No se pudieron cargar los servicios del barbero.' })
+  }
+})
+
+app.put('/api/admin/barbershops/:id/barbers/:barberProfileId/services', requireAuth, async (req, res) => {
+  try {
+    const { id, barberProfileId } = req.params
+    const assignments = Array.isArray(req.body.assignments) ? req.body.assignments : []
+
+    if (!canManageBarbershop(req.auth, id)) {
+      return res.status(403).json({ error: 'No tienes permiso para asignar servicios a este barbero.' })
+    }
+
+    const { data: membership, error: membershipError } = await supabaseAdmin
+      .from('barbershop_staff')
+      .select('*')
+      .eq('barbershop_id', id)
+      .eq('profile_id', barberProfileId)
+      .eq('role', 'barber')
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (membershipError) {
+      throw membershipError
+    }
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Este usuario no es barbero activo de esta barberia.' })
+    }
+
+    const serviceIds = assignments.map((assignment) => assignment.service_id).filter(Boolean)
+
+    if (serviceIds.length) {
+      const { data: validServices, error: validServicesError } = await supabaseAdmin
+        .from('services')
+        .select('id')
+        .eq('barbershop_id', id)
+        .in('id', serviceIds)
+
+      if (validServicesError) {
+        throw validServicesError
+      }
+
+      const validServiceIds = new Set((validServices || []).map((service) => service.id))
+
+      if (serviceIds.some((serviceId) => !validServiceIds.has(serviceId))) {
+        return res.status(400).json({ error: 'Uno de los servicios no pertenece a esta barberia.' })
+      }
+    }
+
+    const savedAssignments = []
+
+    for (const assignment of assignments) {
+      const payload = buildBarberServicePayload(assignment, id, barberProfileId, assignment.service_id)
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('barber_services')
+        .select('id')
+        .eq('barbershop_id', id)
+        .eq('barber_profile_id', barberProfileId)
+        .eq('service_id', assignment.service_id)
+        .maybeSingle()
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const query = existing
+        ? supabaseAdmin.from('barber_services').update(payload).eq('id', existing.id)
+        : supabaseAdmin.from('barber_services').insert(payload)
+
+      const { data: saved, error: saveError } = await query.select('*').single()
+
+      if (saveError) {
+        throw saveError
+      }
+
+      savedAssignments.push(saved)
+    }
+
+    res.json({ assignments: savedAssignments })
+  } catch (error) {
+    console.error('save barber service assignments error:', error)
+    res.status(500).json({ error: 'No se pudieron guardar los servicios del barbero.' })
+  }
+})
+
 app.get('/api/barbershops/:slug', requireSupabase, async (req, res) => {
   const { slug } = req.params
-  const { data, error } = await supabaseAdmin
+  const { data: barbershop, error } = await supabaseAdmin
     .from('barbershops')
     .select('*')
     .eq('slug', slug)
@@ -723,7 +1017,51 @@ app.get('/api/barbershops/:slug', requireSupabase, async (req, res) => {
     return res.status(404).json({ error: 'Barberia no encontrada.' })
   }
 
-  res.json({ barbershop: data })
+  const { data: services, error: servicesError } = await supabaseAdmin
+    .from('services')
+    .select('*')
+    .eq('barbershop_id', barbershop.id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+
+  if (servicesError) {
+    return res.status(500).json({ error: 'No se pudieron cargar los servicios.' })
+  }
+
+  const { data: memberships, error: staffError } = await supabaseAdmin
+    .from('barbershop_staff')
+    .select('*')
+    .eq('barbershop_id', barbershop.id)
+    .eq('role', 'barber')
+    .eq('is_active', true)
+
+  if (staffError) {
+    return res.status(500).json({ error: 'No se pudieron cargar los barberos.' })
+  }
+
+  const profileIds = (memberships || []).map((membership) => membership.profile_id).filter(Boolean)
+  let profiles = []
+
+  if (profileIds.length) {
+    const { data: profileRows, error: profilesError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', profileIds)
+
+    if (profilesError) {
+      return res.status(500).json({ error: 'No se pudieron cargar los perfiles de barberos.' })
+    }
+
+    profiles = profileRows || []
+  }
+
+  const profilesById = new Map(profiles.map((profile) => [profile.id, profile]))
+  const barbers = (memberships || []).map((membership) => ({
+    id: membership.profile_id,
+    profile: profilesById.get(membership.profile_id) || null,
+  }))
+
+  res.json({ barbershop, services: services || [], barbers })
 })
 
 app.use((_req, res) => {

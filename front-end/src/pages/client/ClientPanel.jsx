@@ -3,12 +3,17 @@ import { Calendar } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import Button from '@/components/Button'
 import Shell from '@/components/Shell'
-import { appointments } from '@/data/mockData'
 
-export default function ClientPanel({ nav, title }) {
+export default function ClientPanel({ nav, title, path }) {
   const { profile } = useAuth()
-  const clientAppointments = appointments.filter((appointment) => appointment.client === 'Juan Perez')
-  const nextAppointment = clientAppointments[0]
+
+  if (path.startsWith('/cliente/citas')) {
+    return (
+      <Shell title={title} nav={nav}>
+        <ClientAppointments />
+      </Shell>
+    )
+  }
 
   return (
     <Shell title={title} nav={nav}>
@@ -28,31 +33,24 @@ export default function ClientPanel({ nav, title }) {
             <Calendar size={20} />
           </div>
           <p className="text-sm text-neutral-500">Proxima cita</p>
-          <p className="mt-2 font-semibold">{nextAppointment?.service || 'Sin citas pendientes'}</p>
-          {nextAppointment && (
-            <p className="mt-1 text-sm text-neutral-600">
-              {nextAppointment.time} con {nextAppointment.barber}
-            </p>
-          )}
+          <p className="mt-2 font-semibold">Sin citas pendientes</p>
+          <p className="mt-1 text-sm text-neutral-600">Cuando reserves, tu proxima cita aparecera aqui.</p>
         </div>
       </div>
 
-      <div className="mt-6 rounded-lg border border-neutral-200 bg-white">
-        <div className="border-b border-neutral-200 p-5">
-          <h2 className="font-semibold">Mis citas</h2>
-          <p className="mt-1 text-sm text-neutral-600">Historial y proximas reservas de tu cuenta.</p>
-        </div>
-        <div className="divide-y divide-neutral-200">
-          {clientAppointments.map((appointment) => (
-            <div key={appointment.id} className="grid gap-2 p-5 md:grid-cols-4 md:items-center">
-              <p className="font-medium">{appointment.service}</p>
-              <p className="text-sm text-neutral-600">{appointment.barber}</p>
-              <p className="text-sm text-neutral-600">{appointment.time}</p>
-              <span className="w-fit rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium">{appointment.status}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ClientAppointments className="mt-6" />
     </Shell>
+  )
+}
+
+function ClientAppointments({ className = '' }) {
+  return (
+    <div className={`${className} rounded-lg border border-neutral-200 bg-white`}>
+      <div className="border-b border-neutral-200 p-5">
+        <h2 className="font-semibold">Mis citas</h2>
+        <p className="mt-1 text-sm text-neutral-600">Historial y proximas reservas de tu cuenta.</p>
+      </div>
+      <p className="p-5 text-sm text-neutral-600">Todavia no tienes citas registradas.</p>
+    </div>
   )
 }
