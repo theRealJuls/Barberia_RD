@@ -567,6 +567,10 @@ function AdminServices({ token, barbershopId }) {
   }
 
   const handleDelete = async (serviceId) => {
+    if (!window.confirm('Seguro que deseas eliminar este servicio?')) {
+      return
+    }
+
     setStatus('')
     setError('')
 
