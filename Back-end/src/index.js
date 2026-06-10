@@ -789,6 +789,52 @@ app.get('/api/admin/barbershops/:id/staff', requireAuth, async (req, res) => {
   }
 })
 
+app.get('/api/admin/barbershops/:id/clients', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver clientes de esta barberia.' })
+    }
+
+    const { data: clientRows, error: clientsError } = await supabaseAdmin
+      .from('clients')
+      .select('*')
+      .eq('barbershop_id', req.params.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+
+    if (clientsError) {
+      throw clientsError
+    }
+
+    const profileIds = (clientRows || []).map((client) => client.profile_id).filter(Boolean)
+    let profiles = []
+
+    if (profileIds.length) {
+      const { data: profileRows, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name, email, phone, created_at')
+        .in('id', profileIds)
+
+      if (profilesError) {
+        throw profilesError
+      }
+
+      profiles = profileRows || []
+    }
+
+    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]))
+    const clients = (clientRows || []).map((client) => ({
+      ...client,
+      profile: profilesById.get(client.profile_id) || null,
+    }))
+
+    res.json({ clients })
+  } catch (error) {
+    console.error('list clients error:', error)
+    res.status(500).json({ error: 'No se pudieron cargar los clientes.' })
+  }
+})
+
 app.get('/api/admin/barbershops/:id/services', requireAuth, async (req, res) => {
   try {
     if (!canManageBarbershop(req.auth, req.params.id)) {

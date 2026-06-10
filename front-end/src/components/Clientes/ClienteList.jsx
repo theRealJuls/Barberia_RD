@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { apiRequest } from '@/lib/api'
 import { clientes as clientesMock, clienteHistorial } from '@/data/mockData'
 import ClienteHistorial from './ClienteHistorial'
 
-export default function ClienteList() {
+const showDemoClientes = import.meta.env.VITE_SHOW_DEMO_CLIENTES !== 'false'
+
+function mapClientRow(client) {
+  return {
+    id: client.id,
+    profile_id: client.profile_id,
+    full_name: client.profile?.full_name || 'Cliente sin nombre',
+    email: client.profile?.email || '',
+    phone: client.profile?.phone || '',
+    created_at: client.created_at,
+    notes: client.notes || '',
+  }
+}
+
+export default function ClienteList({ token, barbershopId }) {
   const [clientes, setClientes] = useState([])
   const [selectedClienteId, setSelectedClienteId] = useState('')
   const [usingMockData, setUsingMockData] = useState(false)
@@ -11,26 +25,34 @@ export default function ClienteList() {
 
   useEffect(() => {
     fetchClientes()
-  }, [])
+  }, [barbershopId, token])
 
   const fetchClientes = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, phone, email, created_at')
-      .eq('role', 'client')
-
-    if (error) {
-      console.error('Error:', error.message)
-      setClientes(clientesMock)
-      setSelectedClienteId(clientesMock[0]?.id || '')
-      setUsingMockData(true)
-    } else {
-      const clientesData = data?.length ? data : clientesMock
-      setClientes(clientesData)
-      setSelectedClienteId(clientesData[0]?.id || '')
-      setUsingMockData(!data?.length)
+    if (!token || !barbershopId) {
+      setClientes(showDemoClientes ? clientesMock : [])
+      setSelectedClienteId(showDemoClientes ? clientesMock[0]?.id || '' : '')
+      setUsingMockData(showDemoClientes)
+      setLoading(false)
+      return
     }
-    setLoading(false)
+
+    try {
+      const response = await apiRequest(`/api/admin/barbershops/${barbershopId}/clients`, { token })
+      const clientesData = (response.clients || []).map(mapClientRow)
+      const fallbackData = showDemoClientes ? clientesMock : []
+      const visibleClientes = clientesData.length ? clientesData : fallbackData
+
+      setClientes(visibleClientes)
+      setSelectedClienteId(visibleClientes[0]?.id || '')
+      setUsingMockData(!clientesData.length && showDemoClientes)
+    } catch (error) {
+      console.error('Error:', error.message)
+      setClientes(showDemoClientes ? clientesMock : [])
+      setSelectedClienteId(showDemoClientes ? clientesMock[0]?.id || '' : '')
+      setUsingMockData(showDemoClientes)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) return <p className="text-neutral-500">Cargando clientes...</p>
@@ -92,7 +114,7 @@ export default function ClienteList() {
               <p className="mt-1 text-sm text-neutral-600">{selectedCliente.phone || 'Sin telefono'}</p>
             </div>
             <ClienteHistorial
-              clienteId={selectedCliente.id}
+              clienteId={selectedCliente.profile_id || selectedCliente.id}
               citasMock={usingMockData ? clienteHistorial[selectedCliente.id] || [] : []}
             />
           </>

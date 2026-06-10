@@ -68,7 +68,7 @@ export default function AdminContent({ path, token, barbershopId }) {
   }
 
   if (path.startsWith('/admin/clientes')) {
-    return <AdminClients />
+    return <AdminClients token={token} barbershopId={barbershopId} />
   }
 
   if (path.startsWith('/admin/barberos')) {
@@ -148,8 +148,8 @@ function AdminAppointments() {
   )
 }
 
-function AdminClients() {
-  return <ClienteList />
+function AdminClients({ token, barbershopId }) {
+  return <ClienteList token={token} barbershopId={barbershopId} />
 }
 
 function AdminBarbers({ token, barbershopId }) {
