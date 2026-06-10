@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Banknote, Receipt, Scissors, TrendingUp } from 'lucide-react'
 import InviteUserPanel from '@/components/InviteUserPanel'
+import ClienteList from '@/components/Clientes/ClienteList'
 import Button from '@/components/Button'
 import StatCard from '@/components/StatCard'
 import { apiRequest } from '@/lib/api'
@@ -71,7 +72,7 @@ export default function AdminContent({ path, token, barbershopId }) {
   }
 
   if (path.startsWith('/admin/clientes')) {
-    return <AdminClients />
+    return <AdminClients token={token} barbershopId={barbershopId} />
   }
 
   if (path.startsWith('/admin/barberos')) {
@@ -215,16 +216,8 @@ function AdminAppointments() {
   )
 }
 
-function AdminClients() {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white">
-      <div className="border-b border-neutral-200 p-5">
-        <h2 className="font-semibold">Clientes</h2>
-        <p className="mt-1 text-sm text-neutral-600">Clientes con historial de citas.</p>
-      </div>
-      <p className="p-5 text-sm text-neutral-600">Todavia no hay clientes reales conectados para esta barberia.</p>
-    </div>
-  )
+function AdminClients({ token, barbershopId }) {
+  return <ClienteList token={token} barbershopId={barbershopId} />
 }
 
 function AdminBarbers({ token, barbershopId }) {
