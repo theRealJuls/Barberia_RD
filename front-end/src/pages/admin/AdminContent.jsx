@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Banknote, Receipt, Scissors, TrendingUp } from 'lucide-react'
 import InviteUserPanel from '@/components/InviteUserPanel'
 import Button from '@/components/Button'
+import StatCard from '@/components/StatCard'
 import { apiRequest } from '@/lib/api'
+
+const money = new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' })
 
 const emptyForm = {
   name: '',
@@ -78,15 +82,79 @@ export default function AdminContent({ path, token, barbershopId }) {
     return <AdminServices token={token} barbershopId={barbershopId} />
   }
 
+  if (path.startsWith('/admin/pagos')) {
+    return <AdminPayments token={token} barbershopId={barbershopId} />
+  }
+
   return <AdminHome token={token} barbershopId={barbershopId} />
 }
 
 function AdminHome({ token, barbershopId }) {
   return (
     <>
-      <AdminShopSummary token={token} barbershopId={barbershopId} />
+      <AdminMetrics token={token} barbershopId={barbershopId} />
+      <div className="mt-6">
+        <AdminShopSummary token={token} barbershopId={barbershopId} />
+      </div>
       <InviteUserPanel token={token} defaultBarbershopId={barbershopId || ''} />
     </>
+  )
+}
+
+function AdminMetrics({ token, barbershopId }) {
+  const [services, setServices] = useState([])
+  const [payments, setPayments] = useState([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadMetrics() {
+      if (!token || !barbershopId) {
+        return
+      }
+
+      try {
+        const [servicesResponse, paymentsResponse] = await Promise.all([
+          apiRequest(`/api/admin/barbershops/${barbershopId}/services`, { token }),
+          apiRequest(`/api/admin/barbershops/${barbershopId}/payments`, { token }),
+        ])
+
+        if (mounted) {
+          setServices(servicesResponse.services || [])
+          setPayments(paymentsResponse.payments || [])
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError.message)
+        }
+      }
+    }
+
+    loadMetrics()
+
+    return () => {
+      mounted = false
+    }
+  }, [barbershopId, token])
+
+  const serviciosActivos = services.filter((service) => service.is_active).length
+  const pagosRegistrados = payments.length
+  const pagosPagados = payments.filter((payment) => payment.status === 'paid')
+  const ingresos = pagosPagados.reduce((total, payment) => total + Number(payment.amount), 0)
+  const ticketPromedio = pagosPagados.length ? ingresos / pagosPagados.length : 0
+
+  if (error) {
+    return <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-4">
+      <StatCard label="Servicios activos" value={serviciosActivos} icon={Scissors} />
+      <StatCard label="Pagos registrados" value={pagosRegistrados} icon={Receipt} />
+      <StatCard label="Ingresos" value={money.format(ingresos)} icon={Banknote} />
+      <StatCard label="Ticket promedio" value={money.format(ticketPromedio)} icon={TrendingUp} />
+    </div>
   )
 }
 
@@ -498,6 +566,25 @@ function AdminServices({ token, barbershopId }) {
     }
   }
 
+  const handleDelete = async (serviceId) => {
+    setStatus('')
+    setError('')
+
+    try {
+      await apiRequest(`/api/admin/barbershops/${barbershopId}/services/${serviceId}`, { method: 'DELETE', token })
+
+      setServices((current) => current.filter((service) => service.id !== serviceId))
+
+      if (editingId === serviceId) {
+        resetForm()
+      }
+
+      setStatus('Servicio eliminado correctamente.')
+    } catch (deleteError) {
+      setError(deleteError.message)
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
       <div className="rounded-lg border border-neutral-200 bg-white p-5">
@@ -532,17 +619,93 @@ function AdminServices({ token, barbershopId }) {
         {!loading && services.length > 0 && (
           <div className="divide-y divide-neutral-200">
             {services.map((service) => (
-              <div key={service.id} className="grid gap-2 p-5 md:grid-cols-[1fr_auto] md:items-center">
+              <div key={service.id} className="grid gap-2 p-5 md:grid-cols-[1fr_auto_auto] md:items-center">
                 <div>
                   <p className="font-medium">{service.name}</p>
                   <p className="text-sm text-neutral-600">RD${service.base_price || 0} · {service.base_duration_minutes || 0} min</p>
                 </div>
-                <Button type="button" variant="outline" onClick={() => handleEdit(service)}>Editar</Button>
+                <span className={`w-fit rounded-full px-3 py-1 text-xs font-medium ${service.is_active ? 'bg-neutral-100 text-neutral-900' : 'bg-neutral-100 text-neutral-400'}`}>
+                  {service.is_active ? 'Activo' : 'Inactivo'}
+                </span>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => handleEdit(service)}>Editar</Button>
+                  <Button type="button" variant="outline" className="text-red-700 hover:bg-red-50" onClick={() => handleDelete(service.id)}>Eliminar</Button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function AdminPayments({ token, barbershopId }) {
+  const [payments, setPayments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadPayments() {
+      if (!token || !barbershopId) {
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      setError('')
+
+      try {
+        const response = await apiRequest(`/api/admin/barbershops/${barbershopId}/payments`, { token })
+
+        if (mounted) {
+          setPayments(response.payments || [])
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError.message)
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadPayments()
+
+    return () => {
+      mounted = false
+    }
+  }, [barbershopId, token])
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white">
+      <div className="border-b border-neutral-200 p-5">
+        <h2 className="font-semibold">Pagos</h2>
+        <p className="mt-1 text-sm text-neutral-600">Pagos en efectivo registrados al completar citas.</p>
+      </div>
+      {loading && <p className="p-5 text-sm text-neutral-600">Cargando pagos...</p>}
+      {error && <p className="m-5 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {!loading && !error && payments.length === 0 && (
+        <p className="p-5 text-sm text-neutral-600">Todavia no hay pagos registrados. El registro de pagos se habilita al completar citas (modulo de citas, proximamente).</p>
+      )}
+      {!loading && !error && payments.length > 0 && (
+        <div className="divide-y divide-neutral-200">
+          {payments.map((payment) => (
+            <div key={payment.id} className="grid gap-2 p-5 md:grid-cols-4 md:items-center">
+              <p className="font-medium">{money.format(Number(payment.amount))}</p>
+              <p className="text-sm text-neutral-600">{payment.method === 'cash' ? 'Efectivo' : payment.method}</p>
+              <span className="w-fit rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium">
+                {payment.status === 'paid' ? 'Pagado' : payment.status === 'pending' ? 'Pendiente' : 'Anulado'}
+              </span>
+              <p className="text-sm text-neutral-600">{new Date(payment.paid_at || payment.created_at).toLocaleString('es-DO')}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -864,6 +864,57 @@ app.patch('/api/admin/barbershops/:id/services/:serviceId', requireAuth, async (
   }
 })
 
+app.delete('/api/admin/barbershops/:id/services/:serviceId', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para eliminar servicios en esta barberia.' })
+    }
+
+    const { error } = await supabaseAdmin
+      .from('services')
+      .delete()
+      .eq('id', req.params.serviceId)
+      .eq('barbershop_id', req.params.id)
+
+    if (error) {
+      throw error
+    }
+
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('delete service error:', error)
+
+    if (error.code === '23503') {
+      return res.status(409).json({ error: 'No se puede eliminar: el servicio esta asignado a barberos o citas. Desactivalo en su lugar.' })
+    }
+
+    res.status(500).json({ error: 'No se pudo eliminar el servicio.' })
+  }
+})
+
+app.get('/api/admin/barbershops/:id/payments', requireAuth, async (req, res) => {
+  try {
+    if (!canManageBarbershop(req.auth, req.params.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver pagos de esta barberia.' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('payments')
+      .select('*')
+      .eq('barbershop_id', req.params.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw error
+    }
+
+    res.json({ payments: data || [] })
+  } catch (error) {
+    console.error('list payments error:', error)
+    res.status(500).json({ error: 'No se pudieron cargar los pagos.' })
+  }
+})
+
 app.get('/api/admin/barbershops/:id/barbers/:barberProfileId/services', requireAuth, async (req, res) => {
   try {
     const { id, barberProfileId } = req.params

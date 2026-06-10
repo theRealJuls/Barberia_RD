@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import {
+  Banknote,
   Calendar,
   Clock,
   CreditCard,
@@ -43,6 +44,7 @@ export default function Dashboard({ role }) {
       { href: '/admin/clientes', label: 'Clientes', icon: Users },
       { href: '/admin/barberos', label: 'Barberos', icon: Scissors },
       { href: '/admin/servicios', label: 'Servicios', icon: CreditCard },
+      { href: '/admin/pagos', label: 'Pagos', icon: Banknote },
       { href: '/admin/configuracion', label: 'Configuracion', icon: Settings },
     ],
     'super-admin': [
