@@ -9,11 +9,11 @@ import {
   Users,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
-import InviteUserPanel from '@/components/InviteUserPanel'
 import Shell from '@/components/Shell'
 import StatCard from '@/components/StatCard'
 import { appointments } from '@/data/mockData'
 import AdminContent from '@/pages/admin/AdminContent'
+import BarberPanel from '@/pages/barber/BarberPanel'
 import ClientPanel from '@/pages/client/ClientPanel'
 import SuperAdminContent from '@/pages/super-admin/SuperAdminContent'
 
@@ -30,6 +30,7 @@ export default function Dashboard({ role }) {
       { href: '/barbero', label: 'Inicio', icon: LayoutDashboard },
       { href: '/barbero/agenda', label: 'Agenda', icon: Calendar },
       { href: '/barbero/disponibilidad', label: 'Disponibilidad', icon: Clock },
+      { href: '/barbero/configuracion', label: 'Configuracion', icon: Settings },
     ],
     recepcion: [
       { href: '/recepcion', label: 'Inicio', icon: LayoutDashboard },
@@ -40,6 +41,8 @@ export default function Dashboard({ role }) {
       { href: '/admin', label: 'Inicio', icon: LayoutDashboard },
       { href: '/admin/citas', label: 'Citas', icon: Calendar },
       { href: '/admin/clientes', label: 'Clientes', icon: Users },
+      { href: '/admin/barberos', label: 'Barberos', icon: Scissors },
+      { href: '/admin/servicios', label: 'Servicios', icon: CreditCard },
       { href: '/admin/configuracion', label: 'Configuracion', icon: Settings },
     ],
     'super-admin': [
@@ -57,7 +60,7 @@ export default function Dashboard({ role }) {
   }
 
   if (role === 'cliente') {
-    return <ClientPanel nav={navByRole.cliente} title={titles.cliente} />
+    return <ClientPanel nav={navByRole.cliente} title={titles.cliente} path={location.pathname} />
   }
 
   if (role === 'super-admin') {
@@ -72,6 +75,14 @@ export default function Dashboard({ role }) {
     return (
       <Shell title={titles.admin} nav={navByRole.admin}>
         <AdminContent path={location.pathname} token={session?.access_token} barbershopId={access?.barbershopId} />
+      </Shell>
+    )
+  }
+
+  if (role === 'barbero') {
+    return (
+      <Shell title={titles.barbero} nav={navByRole.barbero}>
+        <BarberPanel path={location.pathname} />
       </Shell>
     )
   }
@@ -100,9 +111,6 @@ export default function Dashboard({ role }) {
           ))}
         </div>
       </div>
-      {(role === 'admin' || role === 'super-admin') && (
-        <InviteUserPanel token={session?.access_token} defaultBarbershopId={access?.barbershopId || ''} />
-      )}
     </Shell>
   )
 }

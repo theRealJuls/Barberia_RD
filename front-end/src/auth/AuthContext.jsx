@@ -26,9 +26,28 @@ export function AuthProvider({ children }) {
       return null
     }
 
-    const me = await apiRequest('/api/auth/me', {
-      token: activeSession.access_token,
-    })
+    let me
+
+    try {
+      me = await apiRequest('/api/auth/me', {
+        token: activeSession.access_token,
+      })
+    } catch (loadError) {
+      if (!loadError.message.toLowerCase().includes('sesion invalida')) {
+        throw loadError
+      }
+
+      const { data, error: refreshError } = await supabase.auth.refreshSession()
+
+      if (refreshError || !data.session?.access_token) {
+        throw loadError
+      }
+
+      setSession(data.session)
+      me = await apiRequest('/api/auth/me', {
+        token: data.session.access_token,
+      })
+    }
 
     setAuthData(me)
     return me
@@ -90,6 +109,7 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async ({ returnTo } = {}) => {
     window.localStorage.setItem('trimio:returnTo', returnTo || window.location.pathname)
+    await supabase.auth.signOut({ scope: 'local' })
 
     const { error: googleError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -104,6 +124,8 @@ export function AuthProvider({ children }) {
   }
 
   const signInWithEmail = async ({ email, password }) => {
+    await supabase.auth.signOut({ scope: 'local' })
+
     const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -111,6 +133,10 @@ export function AuthProvider({ children }) {
 
     if (signInError) {
       throw signInError
+    }
+
+    if (!data.session) {
+      throw new Error('No se pudo crear una sesion. Revisa si la cuenta fue confirmada por correo.')
     }
 
     setSession(data.session)
@@ -161,6 +187,18 @@ export function AuthProvider({ children }) {
     await refreshAuth()
     return result
   }, [refreshAuth, session?.access_token])
+
+  const updatePassword = useCallback(async (password) => {
+    if (!session?.access_token) {
+      throw new Error('Debes iniciar sesion para actualizar tu contrasena.')
+    }
+
+    const { error: passwordError } = await supabase.auth.updateUser({ password })
+
+    if (passwordError) {
+      throw passwordError
+    }
+  }, [session?.access_token])
 
   const finishAuthCallback = useCallback(async () => {
     setLoading(true)
@@ -240,12 +278,13 @@ export function AuthProvider({ children }) {
       signInWithEmail,
       signUpClient,
       updateProfile,
+      updatePassword,
       finishAuthCallback,
       signOut,
       ensureClientForBarbershop,
       getRedirectPath: () => getRedirectPath(authData),
     }),
-    [authData, error, finishAuthCallback, loading, refreshAuth, session, updateProfile]
+    [authData, error, finishAuthCallback, loading, refreshAuth, session, updatePassword, updateProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
